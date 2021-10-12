@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react"
+import React, { useEffect, useState, useRef } from "react"
 import Box from "@mui/material/Box"
 import InputLabel from "@mui/material/InputLabel"
 import MenuItem from "@mui/material/MenuItem"
@@ -18,6 +18,8 @@ import SearchIcon from "@mui/icons-material/Search"
 import Pagination from "@mui/material/Pagination"
 import Modal from "@mui/material/Modal"
 import styled from "styled-components"
+import { debounce } from "debounce"
+import axios from "axios"
 
 export async function getServerSideProps() {
   const response = await fetch(`${process.env.API_URL}/api/category`)
@@ -33,6 +35,10 @@ function DirectoryPage({ availableCategories }) {
   const [category, setCategory] = useState("")
   // const [availableCategories, setAvailableCategories] = useState([])
   const [listings, setListings] = useState([])
+  const [categoryListings, setCategoryListings] = useState([])
+
+  const [displayedListings, setDisplayedListings] = useState([])
+
   const [limit, setLimit] = useState(20)
   const [offset, setOffset] = useState(0)
   const [searchTerm, setSearchTerm] = useState("")
@@ -51,26 +57,90 @@ function DirectoryPage({ availableCategories }) {
       }).toString()
       const response = await fetch(`/api/directory?${queryString}`)
       const json = await response.json()
-      json.data ? setListings(json.data) : setListings([])
-      setPaginatorCount(Math.ceil(json.count / limit))
+      if (json.data) {
+        setListings(json.data)
+        filter()
+        // setCategoryListings(json.data)
+        // setDisplayedListings(json.data.slice(offset, limit))
+      } else {
+        setListings([])
+        // setCategoryListings([])
+        // setDisplayedListings([])
+      }
+      // setPaginatorCount(Math.ceil(json.data.length / limit))
     }
     fetchListings()
-  }, [limit, offset, category, searchTerm])
+  }, [])
 
-  // useEffect(() => {
-  //   async function fetchCategories() {
-  //     const response = await fetch(`/api/category`)
-  //     const json = await response.json()
-  //     setAvailableCategories(json.data)
-  //   }
+  useEffect(() => {
+    console.log("hi")
+    const { cancel, token } = axios.CancelToken.source()
+    const timeOutId = setTimeout(() => filter(), 200)
+    return () => cancel("No longer latest query") || clearTimeout(timeOutId)
 
-  //   fetchCategories()
-  // }, [])
+    filter()
+  }, [searchTerm, category])
+
+  const filter = () => {
+    setOffset(0)
+    setPage(1)
+    const results = []
+    for (let i = 0; i < listings.length; i++) {
+      if (category && category.length) {
+        if (isStringMatch(searchTerm, listings[i])) {
+          if (listings[i].category === category) {
+            results.push(listings[i])
+          }
+        }
+      } else {
+        if (isStringMatch(searchTerm, listings[i])) {
+          results.push(listings[i])
+        }
+      }
+    }
+    console.log(results)
+    setDisplayedListings(results)
+    setDisplayedListings(results.slice(offset, limit))
+    setPaginatorCount(Math.ceil(results.length / 20))
+  }
+
+  const isStringMatch = (term, listing) => {
+    if (!term || !term.length) {
+      return true
+    } else {
+      const trimmed = term.trim().toLowerCase()
+      if (
+        (listing.businessname &&
+          listing.businessname.toLowerCase().includes(trimmed)) ||
+        (listing.description &&
+          listing.description.toLowerCase().includes(trimmed)) ||
+        (listing.city && listing.city.toLowerCase().includes(trimmed)) ||
+        (listing.state && listing.state.toLowerCase().includes(trimmed))
+      ) {
+        return true
+      } else {
+        return false
+      }
+    }
+  }
 
   const handleChange = (event) => {
     setOffset(0)
     setPage(1)
+    setLimit(20)
     setCategory(event.target.value)
+    // let matches
+    // if (!event.target.value || !event.target.value) {
+    //   setCategoryListings(listings)
+    //   matches = listings
+    // } else {
+    //   matches = listings.filter((listing) => {
+    //     return listing.category === event.target.value
+    //   })
+    //   setCategoryListings(matches)
+    // }
+    // setDisplayedListings(matches.slice(0, 20))
+    // setPaginatorCount(Math.ceil(matches.length / 20))
   }
   const handleClose = (event) => {
     setOpen(false)
@@ -79,6 +149,10 @@ function DirectoryPage({ availableCategories }) {
   const handlePaging = (event, value) => {
     setPage(value)
     setOffset((value - 1) * limit)
+    const first = (value - 1) * limit
+    const second = (value - 1) * limit + limit
+
+    setDisplayedListings(categoryListings.slice(first, second))
   }
 
   const handleListItemClick = (event, index) => {
@@ -102,11 +176,6 @@ function DirectoryPage({ availableCategories }) {
     boxShadow: 24,
     p: 4,
   }
-
-  const Paginator = styled.div`
-    display: flex;
-    justify-content: center;
-  `
 
   return (
     <>
@@ -187,7 +256,7 @@ function DirectoryPage({ availableCategories }) {
         </Grid>
         <Divider style={{ marginTop: "50px" }} />
         <List sx={{ width: "100%", bgcolor: "background.paper" }}>
-          {listings.map((listing, index) => {
+          {displayedListings.map((listing, index) => {
             return (
               <ListItemButton
                 key={index}
@@ -221,14 +290,14 @@ function DirectoryPage({ availableCategories }) {
             )
           })}
         </List>
-        <Paginator>
+        <div style={{ display: "flex", justifyContent: "center" }}>
           <Pagination
             count={paginatorCount}
             color="secondary"
             onChange={handlePaging}
             page={page}
           />
-        </Paginator>
+        </div>
       </Box>
     </>
   )
